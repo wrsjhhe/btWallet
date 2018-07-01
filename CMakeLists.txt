@@ -18,7 +18,9 @@ add_subdirectory(./src/math)
 add_subdirectory(./src/message)
 add_subdirectory(./src/unicode)
 add_subdirectory(./src/utility)
-
+add_subdirectory(./src/network)
+add_subdirectory(./src/protocols)
+add_subdirectory(./src/client)
 
 add_executable(btWallet
         ${DIRSRCS}
@@ -39,4 +41,7 @@ target_link_libraries(btWallet
         message
         unicode
         utility
+        network
+        protocols
+        client
         )

@@ -1,83 +1,83 @@
-//#include <iostream>
-//#include <string>
-//#include <boost/program_options.hpp>
-//
-//namespace  bpo = boost::program_options;
-//
-//bool parseParams(int argc,char *argv[])
-//{
-//    bpo::options_description opts("options");
-//
-//    bpo::variables_map vm;
-//
-//    opts.add_options()
-//            ("createwallet", "create a new wallet")
-//            ("help", "help message")
-//            ("name",bpo::value< std::string>(),"the name of wallet")
-//            ("password",bpo::value< std::string>(),"the password of wallet");
-//
-//    bpo::positional_options_description p;
-//    p.add("name",0).add("password",1);
-//
-//
-//    try{
-//        bpo::store(bpo::parse_command_line(argc, argv, opts), vm);
-//    }
-//    catch(...){
-//        std::cout << "输入的参数中存在未定义的选项！\n";
-//        exit(-1);
-//    }
-//
-//    if(vm.count("help") ){
-//        //自动打印所有的选项信息
-//        std::cout << opts << std::endl;
-//        exit(0);
-//    }
-//
-//
-//
-//    if(vm.count("createwallet"))
-//    {
-//        if(vm.count("name"))
-//        {
-//            std::cout << vm["name"].as<std::string>() << std::endl;
-//        }
-//        if(vm.count("password"))
-//        {
-//            std::cout << vm["password"].as<std::string>() << std::endl;
-//        }
-//
-//    }
-//
-//}
-//
-//
-//int main(int argc,char *argv[])
-//{
-//    if(argc < 2)
-//        return -1;
-//    parseParams(argc,argv);
-//
-//    return 0;
-//}
+/**
+ * Copyright (c) 2011-2017 libbitcoin developers (see AUTHORS)
+ *
+ * This file is part of libbitcoin.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+#include <iostream>
+#include <memory>
+#include <bitcoin/client.hpp>
+#include <bitcoin/protocol/zmq/poller.hpp>
+#include <bitcoin/protocol/zmq/context.hpp>
+#include <bitcoin/protocol/zmq/socket.hpp>
 
+using namespace bc;
+using namespace bc::client;
+using namespace bc::protocol;
 
-#include <cstdlib>
-#include <string>
-#include <bitcoin/bitcoin.hpp>
-
+/**
+ * A minimal example that connects to a server and fetches height.
+ */
 int main(int argc, char* argv[])
 {
-    // Extracting Satoshi's words from genesis block.
-    const auto block = bc::chain::block::genesis_mainnet();
-    const auto& coinbase = block.transactions().front();
-    auto trans = block.transactions();
-    const auto& input = coinbase.inputs().front();
-	BITCOIN_ASSERT_MSG(input.script().size() > 2u, "unexpected genesis");
 
-	const auto headline = input.script()[2].data();
-	std::string message(headline.begin(), headline.end());
-    std::cout << message << std::endl;
+    if (argc != 2)
+    {
+        std::cerr << "usage: " << argv[0] << " <server>" << std::endl;
+        return 1;
+    }
 
-    return EXIT_SUCCESS;
+    // Set up the server connection.
+    zmq::context context;
+    zmq::socket socket(context, zmq::socket::role::dealer);
+
+    if (socket.connect({ argv[1] }) != error::success)
+    {
+        std::cerr << "Cannot connect to " << argv[1] << std::endl;
+        return 1;
+    }
+
+    const auto unknown_handler = [](const std::string& command)
+    {
+        std::cout << "unknown command: " << command << std::endl;
+    };
+
+    const auto error_handler = [](const code& code)
+    {
+        std::cout << "error: " << code.message() << std::endl;
+    };
+
+    const auto completion_handler = [](size_t height)
+    {
+        std::cout << "height: " << height << std::endl;
+    };
+
+    socket_stream stream(socket);
+
+    // Wait 2 seconds for the connection, with no failure retries.
+    proxy proxy(stream, unknown_handler, 2000, 0);
+
+    // Make the request.
+    proxy.blockchain_fetch_last_height(error_handler, completion_handler);
+
+    zmq::poller poller;
+    poller.add(socket);
+
+    // Wait 1 second for the response.
+    if (poller.wait(1000).contains(socket.id()))
+        stream.read(proxy);
+
+    return 0;
 }
